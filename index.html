@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>繼電器電路檢修模擬器 (完整考評系統)</title>
+    <style>
+        /* --- 基礎樣式 --- */
+        body { font-family: "Microsoft JhengHei", Arial, sans-serif; background-color: #f4f4f9; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; user-select: none; }
+        h2 { color: #333; margin: 5px 0; }
+        
+        /* --- 頂部控制區 --- */
+        .top-controls { 
+            display: flex; justify-content: space-between; align-items: center; 
+            width: 100%; max-width: 1150px; margin-bottom: 15px; 
+        }
+        .top-title-group { display: flex; flex-direction: column; gap: 5px; }
+        
+        .mode-switcher { display: flex; background: #ddd; border-radius: 25px; padding: 4px; gap: 5px; width: fit-content; }
+        .mode-btn { border: none; padding: 8px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; color: #555; background: transparent; transition: 0.3s; }
+        .mode-btn.active { background-color: #3498db; color: white; shadow: 0 2px 4px rgba(0,0,0,0.2); }
+
+        .help-btn {
+            background-color: #607d8b; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 0.9em; display: flex; align-items: center; gap: 5px;
+        }
+        .help-btn:hover { background-color: #546e7a; }
+
+        /* --- 說明欄位 --- */
+        .instruction-bar { display: flex; align-items: center; justify-content: space-between; gap: 15px; background: #fff; padding: 10px 20px; border-radius: 50px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); width: 100%; max-width: 1150px; box-sizing: border-box; }
+        .student-info { display: flex; gap: 10px; align-items: center; }
+        .student-info input { padding: 5px 10px; border: 1px solid #ccc; border-radius: 4px; text-align: center; }
+        .reset-btn { background-color: #e67e22; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-weight: bold; white-space: nowrap; }
+        .reset-btn:hover { background-color: #d35400; }
+
+        /* --- 電路容器 --- */
+        #circuit-container { width: 1150px; background-color: white; border: 1px solid #ccc; border-radius: 8px; box-shadow: 0 6px 12px rgba(0,0,0,0.1); padding: 20px; overflow-x: auto; position: relative; box-sizing: border-box; }
+
+        /* --- SVG 樣式 (精簡保留) --- */
+        svg { display: block; overflow: visible; }
+        text { font-family: sans-serif; pointer-events: none; }
+        .wire { fill: none; stroke: #2c3e50; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.3s; }
+        .wire.hot { stroke: #e74c3c; } .wire.ground-wire { stroke: #000; } .wire.active { stroke: #e67e22; }
+        .internal-wire { fill: none; stroke: #555; stroke-width: 2; }
+        .ground-symbol line { stroke: #2c3e50; stroke-width: 2; stroke-linecap: round; }
+        .relay-box { fill: none; stroke: #7f8c8d; stroke-width: 2; stroke-dasharray: 6, 4; }
+        .terminal { fill: #fff; stroke: #333; stroke-width: 2; }
+        .coil-path { fill: none; stroke: #d35400; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .coil-path.energized { stroke: #e74c3c; filter: drop-shadow(0 0 4px #e74c3c); }
+        .measure-point { fill: rgba(52, 152, 219, 0.2); stroke: none; cursor: crosshair; transition: all 0.1s ease-out; }
+        .measure-point.hover-target { r: 12 !important; fill: #f1c40f !important; stroke: #f39c12; stroke-width: 2; }
+        .measure-point.snapped { r: 10 !important; fill: #2ecc71 !important; stroke: #27ae60; stroke-width: 2; }
+        .relay-arm { stroke: #2980b9; stroke-width: 5; stroke-linecap: round; transition: transform 0.1s; }
+        .switch-knob { stroke: #27ae60; stroke-width: 5; stroke-linecap: round; cursor: pointer; transition: transform 0.2s; transform-origin: 450px 300px; }
+        .clickable-area { fill: transparent; cursor: pointer; }
+        .bulb-glass { fill: #ecf0f1; stroke: #95a5a6; stroke-width: 2; transition: fill 0.2s; }
+        .bulb-on { fill: #f1c40f; filter: drop-shadow(0 0 15px #f1c40f); }
+        .bulb-filament { fill: none; stroke: #7f8c8d; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .battery-body { fill: #ecf0f1; stroke: #2c3e50; stroke-width: 2; }
+        .meter-group { cursor: grab; } .meter-group:active { cursor: grabbing; }
+        .meter-body { fill: #333; stroke: #111; stroke-width: 2; rx: 10; }
+        .meter-screen { fill: #9caea9; stroke: #666; stroke-width: 1; }
+        .meter-text { font-family: 'Courier New', monospace; font-weight: bold; fill: #000; font-size: 28px; letter-spacing: 2px; }
+        .probe-group { cursor: grab; transition: transform 0.1s; } .probe-group:active { cursor: grabbing; transition: none; }
+        .probe-body { rx: 3; stroke: #333; stroke-width: 1; } .probe-tip { stroke-width: 0.5; }
+        .probe-wire-fixed { fill: none; stroke-width: 3; stroke-linecap: round; pointer-events: none; }
+
+        /* --- 內嵌表格樣式 --- */
+        .embedded-table-container { width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; font-family: "Microsoft JhengHei", sans-serif; background: rgba(255, 255, 255, 0.95); border: 2px solid #555; border-radius: 8px; padding: 10px; box-sizing: border-box; }
+        .embedded-table-container h4 { margin: 0 0 8px 0; text-align: center; font-size: 16px; color: #333; }
+        .embedded-table-container table { border-collapse: collapse; width: 100%; margin-bottom: 8px; font-size: 13px; }
+        .embedded-table-container th, .embedded-table-container td { border: 1px solid #777; padding: 4px; text-align: center; }
+        .embedded-table-container th { background-color: #eee; }
+        .embedded-table-container input { width: 45px; padding: 3px; text-align: center; border: 1px solid #ccc; }
+        
+        .hidden { display: none !important; }
+        .btn-group { display: flex; gap: 5px; width: 100%; }
+        .action-btn { flex: 1; border: none; padding: 6px; border-radius: 4px; cursor: pointer; color: white; font-size: 0.9em; }
+        .btn-check { background-color: #3498db; } .btn-check:hover { background-color: #2980b9; }
+        .btn-cloud { background-color: #27ae60; } .btn-cloud:hover { background-color: #219150; }
+        .btn-csv { background-color: #8e44ad; } .btn-csv:hover { background-color: #7d3c98; }
+        .result-msg { font-size: 12px; font-weight: bold; text-align: center; min-height: 16px; margin-top: 4px; }
+        .correct { color: #2ecc71; } .wrong { color: #e74c3c; }
+
+        /* --- 彈出視窗 (Modal) --- */
+        .modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); z-index: 1000;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: white; padding: 25px; border-radius: 8px;
+            width: 800px; max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        .close-modal {
+            position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; color: #aaa;
+        }
+        .close-modal:hover { color: #333; }
+        .code-block {
+            background: #f4f4f4; border: 1px solid #ddd; padding: 10px;
+            font-family: monospace; font-size: 13px; overflow-x: auto;
+            border-radius: 4px; margin: 10px 0; user-select: text;
+        }
+        .tutorial-step { margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .tutorial-step strong { color: #2c3e50; font-size: 1.1em; display: block; margin-bottom: 5px; }
+
+        #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 999; color: white; font-size: 1.5em; flex-direction: column; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div>資料上傳中...</div>
+        <div style="font-size: 0.6em; margin-top: 10px;">請稍候，勿關閉視窗</div>
+    </div>
+
+    <div id="tutorial-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeTutorial()">&times;</span>
+            <h3 style="margin-top:0; color:#3498db;">☁️ 如何建立雲端試算表連結</h3>
+            <p>請依照以下步驟，建立您自己的 Google 試算表來接收學生考評資料：</p>
+            
+            <div class="tutorial-step">
+                <strong>步驟 1：建立試算表</strong>
+                在您的 Google Drive 新增一個試算表，建議第一列標題如下：<br>
+                <code>時間, 班級, 學號, 姓名, 狀態, 得分, 總分, NO_V1_ON, NO_V2_ON, NO_V1_OFF, NO_V2_OFF, NC_V1_ON, NC_V2_ON, NC_V1_OFF, NC_V2_OFF</code>
+            </div>
+
+            <div class="tutorial-step">
+                <strong>步驟 2：開啟 Apps Script</strong>
+                點選試算表上方選單：<b>擴充功能 (Extensions)</b> &gt; <b>Apps Script</b>。
+            </div>
+
+            <div class="tutorial-step">
+                <strong>步驟 3：貼上程式碼</strong>
+                刪除編輯器內原有內容，複製並貼上以下代碼：
+                <div class="code-block">
+function doPost(e) {<br>
+&nbsp;&nbsp;try {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();<br>
+&nbsp;&nbsp;&nbsp;&nbsp;var p = e.parameter;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;var rowData = [<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;p.timestamp, p.classId, p.id, p.name, p.resultStatus, p.score, p.total,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;p['no-v1-on'], p['no-v2-on'], p['no-v1-off'], p['no-v2-off'],<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;p['nc-v1-on'], p['nc-v2-on'], p['nc-v1-off'], p['nc-v2-off']<br>
+&nbsp;&nbsp;&nbsp;&nbsp;];<br>
+&nbsp;&nbsp;&nbsp;&nbsp;sheet.appendRow(rowData);<br>
+&nbsp;&nbsp;&nbsp;&nbsp;return ContentService.createTextOutput("Success");<br>
+&nbsp;&nbsp;} catch(error) {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;return ContentService.createTextOutput("Error: " + error.toString());<br>
+&nbsp;&nbsp;}<br>
+}
+                </div>
+            </div>
+
+            <div class="tutorial-step">
+                <strong>步驟 4：部署為網頁應用程式 (重要！)</strong>
+                1. 點選右上角藍色 <b>部署 (Deploy)</b> &gt; <b>新增部署</b>。<br>
+                2. 齒輪圖示選 <b>網頁應用程式</b>。<br>
+                3. <b>執行身分</b>：選 <b>我 (Me)</b>。<br>
+                4. <b>誰可以存取</b>：務必選 <b>所有使用者 (Anyone)</b>。<br>
+                5. 點選部署，複製產生的網址 (Web App URL)。
+            </div>
+
+            <div class="tutorial-step">
+                <strong>步驟 5：設定連結</strong>
+                將複製的網址，貼入本網頁程式碼下方的 <code>const GOOGLE_SCRIPT_URL = "..."</code> 中即可。
+            </div>
+            
+            <button class="action-btn btn-check" style="width:100px; margin:0 auto; display:block;" onclick="closeTutorial()">我瞭解了</button>
+        </div>
+    </div>
+
+    <div class="top-controls">
+        <div class="top-title-group">
+            <h2>繼電器電路檢修模擬器</h2>
+        </div>
+        
+        <div style="display:flex; gap:15px; align-items:center;">
+            <div class="mode-switcher">
+                <button class="mode-btn active" id="btn-mode-practice" onclick="setMode('practice')">📖 練習模式</button>
+                <button class="mode-btn" id="btn-mode-exam" onclick="setMode('exam')">📝 考評模式</button>
+            </div>
+            <button class="help-btn" onclick="showTutorial()">⚙️ 雲端設定教學</button>
+        </div>
+    </div>
+    
+    <div class="instruction-bar">
+        <div class="instruction-text" id="practice-instruct">
+            👉 <b>練習模式</b>：拖曳探棒量測，隨時檢查答案。
+        </div>
+        <div class="instruction-text hidden" id="exam-instruct">
+            👉 <b>考評模式</b>：請填寫基本資料，完成量測後送出。
+        </div>
+        
+        <div class="student-info hidden" id="student-info-panel">
+            <input type="text" id="student-class" placeholder="班級" style="width: 70px;">
+            <input type="text" id="student-id" placeholder="學號" style="width: 100px;">
+            <input type="text" id="student-name" placeholder="姓名" style="width: 80px;">
+        </div>
+
+        <button class="reset-btn" onclick="resetMeter()">
+            ↺ 電錶歸位
+        </button>
+    </div>
+
+    <div id="circuit-container">
+        <svg id="main-svg" width="1150" height="1020" viewBox="0 0 1150 1020">
+            <g id="circuit-no">
+                <text x="30" y="30" font-weight="bold" fill="#333" font-size="18">1. 常開繼電器 (NO)</text>
+                <g transform="translate(60, 60)"><rect x="0" y="20" width="60" height="80" class="battery-body" rx="4" /><text x="16" y="55" font-size="28" font-weight="bold" fill="#000" text-anchor="middle">-</text><text x="44" y="55" font-size="24" font-weight="bold" fill="#e74c3c" text-anchor="middle">+</text><text x="15" y="85" font-size="14" font-weight="bold" fill="#555">12V</text></g>
+                <circle cx="76" cy="70" r="6" class="measure-point" data-node="gnd" /><circle cx="104" cy="70" r="6" class="measure-point" data-node="bat_pos" />
+                <polyline points="76,70 76,40 30,40 30,110" class="wire ground-wire" /><line x1="30" y1="110" x2="30" y2="120" class="wire" />
+                <g class="ground-symbol" transform="translate(30, 120)"><line x1="-15" y1="0" x2="15" y2="0" /><line x1="-10" y1="5" x2="10" y2="5" /><line x1="-5" y1="10" x2="5" y2="10" /></g>
+                <circle cx="30" cy="110" r="6" class="measure-point" data-node="gnd" />
+                <line x1="104" y1="70" x2="104" y2="40" class="wire hot" /><line x1="104" y1="40" x2="450" y2="40" class="wire hot" /><line x1="250" y1="40" x2="250" y2="80" class="wire hot" /><line x1="450" y1="40" x2="450" y2="80" class="wire hot" />
+                <circle cx="250" cy="40" r="6" class="measure-point" data-node="bat_pos" /><circle cx="450" cy="40" r="6" class="measure-point" data-node="bat_pos" />
+                <rect x="150" y="80" width="400" height="150" class="relay-box" /><text x="160" y="100" fill="#999" font-size="12">NO RELAY</text>
+                <circle cx="250" cy="80" r="4" class="terminal" /><circle cx="250" cy="80" r="6" class="measure-point" data-node="bat_pos" />
+                <circle cx="250" cy="230" r="4" class="terminal" /><circle cx="250" cy="200" r="4" fill="#333" /><line x1="250" y1="200" x2="250" y2="230" class="internal-wire" /><line x1="250" y1="80" x2="230" y2="190" class="relay-arm" id="relay-arm-no" /><circle cx="250" cy="230" r="6" class="measure-point" data-node="no_load_out" />
+                <circle cx="450" cy="80" r="4" class="terminal" /><circle cx="450" cy="80" r="6" class="measure-point" data-node="bat_pos" /><circle cx="450" cy="230" r="4" class="terminal" />
+                <path d="M450,80 C430,80 430,110 450,110 C470,110 470,140 450,140 C430,140 430,170 450,170 C470,170 470,200 450,200 C430,200 430,230 450,230" class="coil-path" id="relay-coil-no" fill="none" />
+                <line x1="430" y1="140" x2="260" y2="140" stroke="#ccc" stroke-width="1" stroke-dasharray="3,3" /><circle cx="450" cy="230" r="6" class="measure-point" data-node="no_coil_out" />
+                <line x1="250" y1="230" x2="250" y2="300" class="wire" id="wire-load-1-no" />
+                <g transform="translate(250, 325)"><circle cx="0" cy="0" r="25" class="bulb-glass" id="bulb-no" /><path d="M-10,10 L-5,-5 L0,10 L5,-5 L10,10" class="bulb-filament" /><text x="30" y="5">燈泡</text></g>
+                <line x1="250" y1="350" x2="250" y2="400" class="wire" id="wire-load-2-no" /><circle cx="250" cy="400" r="6" class="measure-point" data-node="no_load_gnd_pt" /><line x1="250" y1="400" x2="250" y2="460" class="wire" />
+                <g class="ground-symbol" transform="translate(250, 460)"><line x1="-15" y1="0" x2="15" y2="0" /><line x1="-10" y1="5" x2="10" y2="5" /><line x1="-5" y1="10" x2="5" y2="10" /></g>
+                <circle cx="250" cy="460" r="6" class="measure-point" data-node="gnd" />
+                <line x1="450" y1="230" x2="450" y2="300" class="wire" id="wire-ctrl-1-no" /><circle cx="450" cy="300" r="3" fill="#333" /><circle cx="450" cy="300" r="6" class="measure-point" data-node="no_sw_in" /><circle cx="450" cy="350" r="3" fill="#333" />
+                <line x1="450" y1="350" x2="420" y2="300" class="switch-knob" id="manual-switch-no" /><rect x="400" y="290" width="100" height="70" class="clickable-area" onclick="toggleNo()" /><text x="470" y="330">控制開關</text>
+                <circle cx="450" cy="350" r="6" class="measure-point" data-node="no_sw_out" /><line x1="450" y1="350" x2="450" y2="400" class="wire" id="wire-ctrl-2-no" /><circle cx="450" cy="400" r="6" class="measure-point" data-node="no_sw_out" /><line x1="450" y1="400" x2="450" y2="460" class="wire" />
+                <g class="ground-symbol" transform="translate(450, 460)"><line x1="-15" y1="0" x2="15" y2="0" /><line x1="-10" y1="5" x2="10" y2="5" /><line x1="-5" y1="10" x2="5" y2="10" /></g>
+                <circle cx="450" cy="460" r="6" class="measure-point" data-node="gnd" />
+            </g>
+
+            <foreignObject x="580" y="70" width="300" height="250">
+                <div xmlns="http://www.w3.org/1999/xhtml" class="embedded-table-container">
+                    <h4>NO 繼電器量測表</h4>
+                    <table>
+                        <tr><th>燈泡</th><th>開關</th><th>V1 (線圈)</th><th>V2 (開關)</th></tr>
+                        <tr><td>ON</td><td>ON</td><td><input type="number" id="no-v1-on"></td><td><input type="number" id="no-v2-on"></td></tr>
+                        <tr><td>OFF</td><td>OFF</td><td><input type="number" id="no-v1-off"></td><td><input type="number" id="no-v2-off"></td></tr>
+                    </table>
+                    <div class="btn-group practice-only">
+                        <button class="action-btn btn-check" onclick="checkNoResult()">檢查答案</button>
+                    </div>
+                    <div id="no-result" class="result-msg practice-only"></div>
+                </div>
+            </foreignObject>
+
+            <line x1="50" y1="490" x2="1100" y2="490" stroke="#ddd" stroke-width="2" stroke-dasharray="10, 5" />
+
+            <g id="circuit-nc" transform="translate(0, 520)">
+                <text x="30" y="30" font-weight="bold" fill="#333" font-size="18">2. 常閉繼電器 (NC)</text>
+                <g transform="translate(60, 60)"><rect x="0" y="20" width="60" height="80" class="battery-body" rx="4" /><text x="16" y="55" font-size="28" font-weight="bold" fill="#000" text-anchor="middle">-</text><text x="44" y="55" font-size="24" font-weight="bold" fill="#e74c3c" text-anchor="middle">+</text><text x="15" y="85" font-size="14" font-weight="bold" fill="#555">12V</text></g>
+                <circle cx="76" cy="70" r="6" class="measure-point" data-node="gnd" /><circle cx="104" cy="70" r="6" class="measure-point" data-node="bat_pos" />
+                <polyline points="76,70 76,40 30,40 30,110" class="wire ground-wire" /><line x1="30" y1="110" x2="30" y2="120" class="wire" />
+                <g class="ground-symbol" transform="translate(30, 120)"><line x1="-15" y1="0" x2="15" y2="0" /><line x1="-10" y1="5" x2="10" y2="5" /><line x1="-5" y1="10" x2="5" y2="10" /></g>
+                <circle cx="30" cy="110" r="6" class="measure-point" data-node="gnd" />
+                <line x1="104" y1="70" x2="104" y2="40" class="wire hot" /><line x1="104" y1="40" x2="450" y2="40" class="wire hot" /><line x1="250" y1="40" x2="250" y2="80" class="wire hot" /><line x1="450" y1="40" x2="450" y2="80" class="wire hot" />
+                <circle cx="250" cy="40" r="6" class="measure-point" data-node="bat_pos" /><circle cx="450" cy="40" r="6" class="measure-point" data-node="bat_pos" />
+                <rect x="150" y="80" width="400" height="150" class="relay-box" /><text x="160" y="100" fill="#999" font-size="12">NC RELAY</text>
+                <circle cx="250" cy="80" r="4" class="terminal" /><circle cx="250" cy="80" r="6" class="measure-point" data-node="bat_pos" />
+                <circle cx="250" cy="230" r="4" class="terminal" /><circle cx="250" cy="200" r="4" fill="#333" /><line x1="250" y1="200" x2="250" y2="230" class="internal-wire" /><line x1="250" y1="80" x2="250" y2="200" class="relay-arm" id="relay-arm-nc" />
+                <circle cx="250" cy="230" r="6" class="measure-point" data-node="nc_load_out" />
+                <circle cx="450" cy="80" r="4" class="terminal" /><circle cx="450" cy="80" r="6" class="measure-point" data-node="bat_pos" />
+                <circle cx="450" cy="230" r="4" class="terminal" />
+                <path d="M450,80 C430,80 430,110 450,110 C470,110 470,140 450,140 C430,140 430,170 450,170 C470,170 470,200 450,200 C430,200 430,230 450,230" class="coil-path" id="relay-coil-nc" fill="none" />
+                <line x1="430" y1="140" x2="260" y2="140" stroke="#ccc" stroke-width="1" stroke-dasharray="3,3" /><circle cx="450" cy="230" r="6" class="measure-point" data-node="nc_coil_out" />
+                <line x1="250" y1="230" x2="250" y2="300" class="wire active" id="wire-load-1-nc" />
+                <g transform="translate(250, 325)"><circle cx="0" cy="0" r="25" class="bulb-glass bulb-on" id="bulb-nc" /><path d="M-10,10 L-5,-5 L0,10 L5,-5 L10,10" class="bulb-filament" /><text x="30" y="5">燈泡</text></g>
+                <line x1="250" y1="350" x2="250" y2="400" class="wire active" id="wire-load-2-nc" />
+                <circle cx="250" cy="400" r="6" class="measure-point" data-node="nc_load_gnd_pt" /><line x1="250" y1="400" x2="250" y2="460" class="wire" />
+                <g class="ground-symbol" transform="translate(250, 460)"><line x1="-15" y1="0" x2="15" y2="0" /><line x1="-10" y1="5" x2="10" y2="5" /><line x1="-5" y1="10" x2="5" y2="10" /></g>
+                <circle cx="250" cy="460" r="6" class="measure-point" data-node="gnd" />
+                <line x1="450" y1="230" x2="450" y2="300" class="wire" id="wire-ctrl-1-nc" />
+                <circle cx="450" cy="300" r="3" fill="#333" /><circle cx="450" cy="300" r="6" class="measure-point" data-node="nc_sw_in" />
+                <circle cx="450" cy="350" r="3" fill="#333" />
+                <line x1="450" y1="350" x2="420" y2="300" class="switch-knob" id="manual-switch-nc" />
+                <rect x="400" y="290" width="100" height="70" class="clickable-area" onclick="toggleNc()" />
+                <text x="470" y="330">控制開關</text>
+                <circle cx="450" cy="350" r="6" class="measure-point" data-node="nc_sw_out" />
+                <line x1="450" y1="350" x2="450" y2="400" class="wire" id="wire-ctrl-2-nc" /><circle cx="450" cy="400" r="6" class="measure-point" data-node="nc_sw_out" />
+                <line x1="450" y1="400" x2="450" y2="460" class="wire" />
+                <g class="ground-symbol" transform="translate(450, 460)"><line x1="-15" y1="0" x2="15" y2="0" /><line x1="-10" y1="5" x2="10" y2="5" /><line x1="-5" y1="10" x2="5" y2="10" /></g>
+                <circle cx="450" cy="460" r="6" class="measure-point" data-node="gnd" />
+            </g>
+
+            <foreignObject x="580" y="660" width="300" height="250">
+                <div xmlns="http://www.w3.org/1999/xhtml" class="embedded-table-container">
+                    <h4>NC 繼電器量測表</h4>
+                    <table>
+                        <tr><th>燈泡</th><th>開關</th><th>V1 (線圈)</th><th>V2 (開關)</th></tr>
+                        <tr><td>ON</td><td>OFF</td><td><input type="number" id="nc-v1-on"></td><td><input type="number" id="nc-v2-on"></td></tr>
+                        <tr><td>OFF</td><td>ON</td><td><input type="number" id="nc-v1-off"></td><td><input type="number" id="nc-v2-off"></td></tr>
+                    </table>
+                    <div class="btn-group practice-only">
+                        <button class="action-btn btn-check" onclick="checkNcResult()">檢查答案</button>
+                    </div>
+                    <div id="nc-result" class="result-msg practice-only"></div>
+                </div>
+            </foreignObject>
+            
+            <foreignObject x="890" y="660" width="200" height="200" class="exam-only hidden">
+                <div xmlns="http://www.w3.org/1999/xhtml" class="embedded-table-container" style="background:#f9f9f9; border-color:#e67e22;">
+                    <h4 style="color:#d35400">考評送出</h4>
+                    <p style="font-size:12px; margin:5px 0;">請確認班級、學號、姓名及所有數值皆已填寫。</p>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <button class="action-btn btn-cloud" onclick="submitToGoogle()">☁️ 送出至雲端</button>
+                        <button class="action-btn btn-csv" onclick="downloadCSV()">💾 下載 CSV</button>
+                    </div>
+                </div>
+            </foreignObject>
+
+            <g id="meter-group" class="meter-group" transform="translate(650, 410) scale(0.6)">
+                <rect x="0" y="0" width="180" height="250" class="meter-body" /><rect x="20" y="20" width="140" height="80" class="meter-screen" />
+                <text x="90" y="70" text-anchor="middle" class="meter-text" id="voltage-display">0.00 V</text>
+                <text x="90" y="150" text-anchor="middle" fill="#aaa" font-size="12">DIGITAL MULTIMETER</text>
+                <circle cx="90" cy="180" r="25" fill="#222" stroke="#555" stroke-width="2" /><line x1="90" y1="180" x2="90" y2="160" stroke="#fff" stroke-width="3" />
+                <circle cx="50" cy="220" r="8" fill="#c0392b" /><circle cx="130" cy="220" r="8" fill="#222" stroke="#666" />
+            </g>
+            <path id="wire-red-fixed" d="" class="probe-wire-fixed" stroke="#c0392b" /><path id="wire-black-fixed" d="" class="probe-wire-fixed" stroke="#222" />
+            <g id="probe-red" class="probe-group" transform="translate(580, 500) rotate(-15)">
+                <rect x="-5" y="0" width="10" height="60" fill="#c0392b" stroke="#922b21" class="probe-body" /><polygon points="-5,60 5,60 0,85" fill="#bdc3c7" stroke="#7f8c8d" class="probe-tip" /> 
+            </g>
+            <g id="probe-black" class="probe-group" transform="translate(828, 500) rotate(15)">
+                <rect x="-5" y="0" width="10" height="60" fill="#333" class="probe-body" /><polygon points="-5,60 5,60 0,85" fill="#bdc3c7" stroke="#7f8c8d" class="probe-tip" />
+            </g>
+        </svg>
+    </div>
+
+    <script>
+        // 設定：Google Script 網址 (請貼上您的 URL)
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwS7gjmaC3SRj0gO8ADSrLwJB4bYqFPyGks561VE_MBmkrVCUpOLbSjbnb50EXA89eZ/exec"; 
+
+        let currentMode = 'practice';
+        let isNoClosed = false, isNcSwitchClosed = false;
+        
+        function showTutorial() { document.getElementById('tutorial-modal').classList.remove('hidden'); }
+        function closeTutorial() { document.getElementById('tutorial-modal').classList.add('hidden'); }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('btn-mode-practice').classList.toggle('active', mode === 'practice');
+            document.getElementById('btn-mode-exam').classList.toggle('active', mode === 'exam');
+            const practiceElements = document.querySelectorAll('.practice-only');
+            const examElements = document.querySelectorAll('.exam-only');
+            
+            if (mode === 'practice') {
+                practiceElements.forEach(el => el.classList.remove('hidden'));
+                examElements.forEach(el => el.classList.add('hidden'));
+                document.getElementById('practice-instruct').classList.remove('hidden');
+                document.getElementById('exam-instruct').classList.add('hidden');
+                document.getElementById('student-info-panel').classList.add('hidden');
+            } else {
+                practiceElements.forEach(el => el.classList.add('hidden'));
+                examElements.forEach(el => el.classList.remove('hidden'));
+                document.getElementById('practice-instruct').classList.add('hidden');
+                document.getElementById('exam-instruct').classList.remove('hidden');
+                document.getElementById('student-info-panel').classList.remove('hidden');
+                document.querySelectorAll('input').forEach(input => {
+                    input.style.backgroundColor = '';
+                    if (input.id.startsWith('no-') || input.id.startsWith('nc-')) input.value = '';
+                });
+                document.querySelectorAll('.result-msg').forEach(msg => msg.textContent = '');
+            }
+        }
+
+        function gatherAssessmentData() {
+            const classId = document.getElementById('student-class').value.trim();
+            const name = document.getElementById('student-name').value.trim();
+            const id = document.getElementById('student-id').value.trim();
+            if (!classId || !name || !id) { alert("請填寫班級、學號與姓名！"); return null; }
+
+            const answers = {
+                'no-v1-on': 12, 'no-v2-on': 0, 'no-v1-off': 0, 'no-v2-off': 12,
+                'nc-v1-on': 0, 'nc-v2-on': 12, 'nc-v1-off': 12, 'nc-v2-off': 0
+            };
+            let score = 0, total = 8;
+            let details = {};
+            let isPass = true;
+            for (let key in answers) {
+                const inputVal = parseFloat(document.getElementById(key).value);
+                const isCorrect = !isNaN(inputVal) && Math.abs(inputVal - answers[key]) <= 0.5;
+                if (isCorrect) score++; else isPass = false;
+                details[key] = isNaN(inputVal) ? "" : inputVal;
+            }
+            const resultStatus = isPass ? "PASS" : "FAIL";
+            const timestamp = new Date().toLocaleString();
+            return { timestamp, classId, id, name, resultStatus, score, total, ...details };
+        }
+
+        function downloadCSV() {
+            const data = gatherAssessmentData();
+            if (!data) return;
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+            csvContent += "時間,班級,學號,姓名,狀態,得分,總分,NO_V1_ON,NO_V2_ON,NO_V1_OFF,NO_V2_OFF,NC_V1_ON,NC_V2_ON,NC_V1_OFF,NC_V2_OFF\n";
+            const row = [
+                data.timestamp, data.classId, data.id, data.name, data.resultStatus, data.score, data.total,
+                data['no-v1-on'], data['no-v2-on'], data['no-v1-off'], data['no-v2-off'],
+                data['nc-v1-on'], data['nc-v2-on'], data['nc-v1-off'], data['nc-v2-off']
+            ].join(",");
+            csvContent += row;
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `${data.classId}_${data.id}_${data.name}_考評結果.csv`);
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+
+        function submitToGoogle() {
+            const data = gatherAssessmentData();
+            if (!data) return;
+            if (GOOGLE_SCRIPT_URL === "你的_GOOGLE_SCRIPT_WEB_APP_URL") { alert("請先設定 Google Script URL"); return; }
+            document.getElementById('loading-overlay').style.display = 'flex';
+            const params = new URLSearchParams(data).toString();
+            fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: params
+            })
+            .then(response => response.text())
+            .then(result => {
+                document.getElementById('loading-overlay').style.display = 'none';
+                alert("✅ 資料已成功送出！\n" + data.classId + "班 " + data.name + " 結果：" + data.resultStatus + " (" + data.score + "/" + data.total + ")");
+            })
+            .catch(error => {
+                document.getElementById('loading-overlay').style.display = 'none';
+                console.error('Error:', error);
+                alert("❌ 送出失敗，請改用下載 CSV。");
+            });
+        }
+
+        // --- 電路與互動邏輯 ---
+        const svg = document.getElementById('main-svg');
+        const voltageDisplay = document.getElementById('voltage-display');
+        const METER_INIT_X = 650, METER_INIT_Y = 410, PROBE_RED_INIT_X = 580, PROBE_RED_INIT_Y = 500, PROBE_BLACK_INIT_X = 828, PROBE_BLACK_INIT_Y = 500;
+        const meter = { el: document.getElementById('meter-group'), type: 'meter', x: METER_INIT_X, y: METER_INIT_Y, scale: 0.6 };
+        const probeRed = { el: document.getElementById('probe-red'), wire: document.getElementById('wire-red-fixed'), type: 'probe', node: null, x: PROBE_RED_INIT_X, y: PROBE_RED_INIT_Y };
+        const probeBlack = { el: document.getElementById('probe-black'), wire: document.getElementById('wire-black-fixed'), type: 'probe', node: null, x: PROBE_BLACK_INIT_X, y: PROBE_BLACK_INIT_Y };
+        let activeDraggable = null, offset = { x: 0, y: 0 }, wireStartRed = { x: 0, y: 0 }, wireStartBlack = { x: 0, y: 0 };
+        [meter, probeRed, probeBlack].forEach(item => item.el.addEventListener('mousedown', (evt) => startDrag(evt, item)));
+        document.addEventListener('mousemove', drag); document.addEventListener('mouseup', endDrag);
+        updateWireStartPoints(); updateWireEndPoint(probeRed); updateWireEndPoint(probeBlack);
+
+        function resetMeter() {
+            meter.x = METER_INIT_X; meter.y = METER_INIT_Y; meter.el.setAttribute('transform', `translate(${meter.x}, ${meter.y}) scale(${meter.scale})`);
+            probeRed.x = PROBE_RED_INIT_X; probeRed.y = PROBE_RED_INIT_Y; probeRed.node = null; probeRed.el.setAttribute('transform', `translate(${probeRed.x}, ${probeRed.y}) rotate(-15)`);
+            probeBlack.x = PROBE_BLACK_INIT_X; probeBlack.y = PROBE_BLACK_INIT_Y; probeBlack.node = null; probeBlack.el.setAttribute('transform', `translate(${probeBlack.x}, ${probeBlack.y}) rotate(15)`);
+            updateWireStartPoints(); updateWireEndPoint(probeRed); updateWireEndPoint(probeBlack);
+            document.querySelectorAll('.measure-point').forEach(p => p.classList.remove('snapped')); calculateVoltage();
+        }
+        function getElementCenterGlobal(el) { const pt = svg.createSVGPoint(); pt.x = parseFloat(el.getAttribute('cx')); pt.y = parseFloat(el.getAttribute('cy')); return pt.matrixTransform(el.getScreenCTM()).matrixTransform(svg.getScreenCTM().inverse()); }
+        function startDrag(evt, item) { activeDraggable = item; const CTM = svg.getScreenCTM(); offset.x = (evt.clientX-CTM.e)/CTM.a-item.x; offset.y = (evt.clientY-CTM.f)/CTM.d-item.y; }
+        function drag(evt) { if (!activeDraggable) return; evt.preventDefault(); const CTM = svg.getScreenCTM(); const newX = (evt.clientX-CTM.e)/CTM.a-offset.x; const newY = (evt.clientY-CTM.f)/CTM.d-offset.y; activeDraggable.x = newX; activeDraggable.y = newY; if (activeDraggable.type === 'meter') { activeDraggable.el.setAttribute('transform', `translate(${newX}, ${newY}) scale(${meter.scale})`); updateWireStartPoints(); updateWireEndPoint(probeRed); updateWireEndPoint(probeBlack); } else { const rot = (activeDraggable.el.getAttribute('transform').match(/rotate\([^)]+\)/)||[''])[0]; activeDraggable.el.setAttribute('transform', `translate(${newX}, ${newY}) ${rot}`); updateWireEndPoint(activeDraggable); checkProbeHover(activeDraggable); } }
+        function checkProbeHover(probe) { const ang = parseFloat((probe.el.getAttribute('transform').match(/rotate\(([-\d.]+)\)/)||[0,0])[1])*(Math.PI/180); const tx = probe.x-(85*Math.sin(ang)), ty = probe.y+(85*Math.cos(ang)); document.querySelectorAll('.measure-point').forEach(p => p.classList.remove('hover-target')); document.querySelectorAll('.measure-point').forEach(pt => { if (Math.hypot(getElementCenterGlobal(pt).x-tx, getElementCenterGlobal(pt).y-ty)<30) pt.classList.add('hover-target'); }); }
+        function endDrag() { if (!activeDraggable) return; if (activeDraggable.type==='probe') { checkProbeSnapping(activeDraggable); document.querySelectorAll('.measure-point').forEach(p=>p.classList.remove('hover-target')); } activeDraggable = null; calculateVoltage(); }
+        function checkProbeSnapping(probe) { const ang = parseFloat((probe.el.getAttribute('transform').match(/rotate\(([-\d.]+)\)/)||[0,0])[1])*(Math.PI/180); const tx = probe.x-(85*Math.sin(ang)), ty = probe.y+(85*Math.cos(ang)); let snapped = false; const pts = document.querySelectorAll('.measure-point'); for (let pt of pts) { const c = getElementCenterGlobal(pt); if (Math.hypot(c.x-tx, c.y-ty)<30) { probe.x = c.x-(-85*Math.sin(ang)); probe.y = c.y-(85*Math.cos(ang)); probe.el.setAttribute('transform', `translate(${probe.x},${probe.y}) ${((probe.el.getAttribute('transform').match(/rotate\([^)]+\)/)||[''])[0])}`); updateWireEndPoint(probe); probe.node = pt.getAttribute('data-node'); snapped = true; break; } } if (!snapped) probe.node = null; updateSnappedVisuals(); }
+        function updateSnappedVisuals() { document.querySelectorAll('.measure-point').forEach(p => { const c = getElementCenterGlobal(p); const rt = getTipPos(probeRed), bt = getTipPos(probeBlack); if ((probeRed.node===p.getAttribute('data-node')&&Math.hypot(c.x-rt.x,c.y-rt.y)<5) || (probeBlack.node===p.getAttribute('data-node')&&Math.hypot(c.x-bt.x,c.y-bt.y)<5)) p.classList.add('snapped'); else p.classList.remove('snapped'); }); }
+        function getTipPos(p) { const a = parseFloat((p.el.getAttribute('transform').match(/rotate\(([-\d.]+)\)/)||[0,0])[1])*(Math.PI/180); return {x:p.x-(85*Math.sin(a)), y:p.y+(85*Math.cos(a))}; }
+        function updateWireStartPoints() { wireStartRed.x=meter.x+30; wireStartRed.y=meter.y+132; wireStartBlack.x=meter.x+78; wireStartBlack.y=meter.y+132; }
+        function updateWireEndPoint(p) { const s=(p===probeRed)?wireStartRed:wireStartBlack; p.wire.setAttribute('d',`M ${s.x},${s.y} C ${s.x},${s.y+150} ${p.x},${p.y+50} ${p.x},${p.y}`); }
+        function getVoltage(n) { if(!n||n==='gnd')return 0; if(n==='bat_pos')return 12; if(n==='no_coil_out'||n==='no_sw_in')return isNoClosed?0.1:12; if(n==='no_sw_out')return 0; if(n==='no_load_out'||n==='no_load_gnd_pt')return isNoClosed?12:0; if(n==='nc_coil_out'||n==='nc_sw_in')return isNcSwitchClosed?0.1:12; if(n==='nc_sw_out')return 0; if(n==='nc_load_out'||n==='nc_load_gnd_pt')return isNcSwitchClosed?0:12; return 0; }
+        function calculateVoltage() { voltageDisplay.textContent = (getVoltage(probeRed.node)-getVoltage(probeBlack.node)).toFixed(2)+" V"; }
+        function toggleNo() { isNoClosed=!isNoClosed; updateCircuitUI('no',isNoClosed); calculateVoltage(); }
+        function toggleNc() { isNcSwitchClosed=!isNcSwitchClosed; updateCircuitUI('nc',isNcSwitchClosed); calculateVoltage(); }
+        function updateCircuitUI(t,c) { const s=t==='no'?'-no':'-nc'; const sw=document.getElementById('manual-switch'+s), coil=document.getElementById('relay-coil'+s), arm=document.getElementById('relay-arm'+s), bulb=document.getElementById('bulb'+s), wC=document.getElementById('wire-ctrl-1'+s), wL1=document.getElementById('wire-load-1'+s), wL2=document.getElementById('wire-load-2'+s); if(c){sw.setAttribute('x2','450');coil.classList.add('energized');wC.classList.add('active');}else{sw.setAttribute('x2','420');coil.classList.remove('energized');wC.classList.remove('active');} setTimeout(()=>{ const act=(t==='no')?c:!c; if(act){arm.setAttribute('x2','250');arm.setAttribute('y2','200');bulb.classList.add('bulb-on');wL1.classList.add('active');wL2.classList.add('active');}else{arm.setAttribute('x2','230');arm.setAttribute('y2','190');bulb.classList.remove('bulb-on');wL1.classList.remove('active');wL2.classList.remove('active');} calculateVoltage(); },100); }
+        function validateInput(id,e) { const el=document.getElementById(id), v=parseFloat(el.value); if(!isNaN(v)&&Math.abs(v-e)<=0.5){el.style.backgroundColor="#d4edda";return true;}else{el.style.backgroundColor="#f8d7da";return false;} }
+        function checkNoResult() { const ok=[validateInput('no-v1-on',12),validateInput('no-v2-on',0),validateInput('no-v1-off',0),validateInput('no-v2-off',12)].every(Boolean); const m=document.getElementById('no-result'); if(ok){m.textContent="✅ 正確！";m.className="result-msg correct";}else{m.textContent="❌ 數值有誤";m.className="result-msg wrong";} }
+        function checkNcResult() { const ok=[validateInput('nc-v1-on',0),validateInput('nc-v2-on',12),validateInput('nc-v1-off',12),validateInput('nc-v2-off',0)].every(Boolean); const m=document.getElementById('nc-result'); if(ok){m.textContent="✅ 正確！";m.className="result-msg correct";}else{m.textContent="❌ 數值有誤";m.className="result-msg wrong";} }
+    </script>
+</body>
+</html>
